@@ -17,7 +17,8 @@ public class VC {
     @Test
     public void declarationAndAssignment() throws JsonProcessingException {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/vc.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+
+        Simulator simulator = new Simulator(rebecaModel,false);
         simulator.run();
 
         Map<String, LocalState> states = simulator.getState().getStates();

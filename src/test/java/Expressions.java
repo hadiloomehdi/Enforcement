@@ -13,7 +13,7 @@ public class Expressions {
     @Test
     public void simpleArithmetic() {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/simpleArithmetic.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+        Simulator simulator = new Simulator(rebecaModel,false);
         GlobalState state = simulator.getState();
         PrimitiveValue sumResult = (PrimitiveValue) state.getVariableValue(ACTOR_NAME, "sumResult");
         PrimitiveValue minusResult = (PrimitiveValue) state.getVariableValue(ACTOR_NAME, "minusResult");
@@ -28,7 +28,7 @@ public class Expressions {
     @Test
     public void complexArithmetic() {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/complexArithmetic.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+        Simulator simulator = new Simulator(rebecaModel,false);
         GlobalState state = simulator.getState();
         PrimitiveValue result = (PrimitiveValue) state.getVariableValue(ACTOR_NAME, "result");
         Assert.assertEquals(-312495, result.getContent());
@@ -37,7 +37,7 @@ public class Expressions {
     @Test
     public void complexLogical() {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/complexLogical.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+        Simulator simulator = new Simulator(rebecaModel,false);
         GlobalState state = simulator.getState();
         state.getVariableValue(ACTOR_NAME, "result");
         PrimitiveValue result = (PrimitiveValue) state.getVariableValue(ACTOR_NAME, "result");

@@ -14,7 +14,7 @@ public class If {
     @Test
     public void testSingleIf() {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/if.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+        Simulator simulator = new Simulator(rebecaModel,false);
         GlobalState state = simulator.getState();
 
         PrimitiveValue insideIf = (PrimitiveValue) state.getVariableValue(ACTOR_NAME, "insideIf");
@@ -24,7 +24,7 @@ public class If {
     @Test
     public void testIfElse() {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/if-else.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+        Simulator simulator = new Simulator(rebecaModel,false);
         GlobalState state = simulator.getState();
 
         PrimitiveValue insideElse = (PrimitiveValue) state.getVariableValue(ACTOR_NAME, "insideElse");
@@ -34,7 +34,7 @@ public class If {
     @Test
     public void testNestedIfElse() {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/if-else-nested.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+        Simulator simulator = new Simulator(rebecaModel,false);
         GlobalState state = simulator.getState();
 
         PrimitiveValue insideElseOfElseIf = (PrimitiveValue) state.getVariableValue(ACTOR_NAME, "insideElseOfElseIf");

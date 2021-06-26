@@ -14,7 +14,7 @@ public class MessageCall {
     @Test
     public void testSimple() throws JsonProcessingException {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/simple.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+        Simulator simulator = new Simulator(rebecaModel,false);
         simulator.run();
         GlobalState state = simulator.getState();
 
@@ -28,7 +28,7 @@ public class MessageCall {
     @Test
     public void testArgument() throws JsonProcessingException {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/argument.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+        Simulator simulator = new Simulator(rebecaModel,false);
         simulator.run();
         GlobalState state = simulator.getState();
 

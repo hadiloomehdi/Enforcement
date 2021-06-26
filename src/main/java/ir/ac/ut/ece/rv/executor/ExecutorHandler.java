@@ -9,13 +9,13 @@ import java.util.Map;
 public class ExecutorHandler {
     private Map<Class, StatementExecutor> executorMap;
 
-    public ExecutorHandler() {
+    public ExecutorHandler(boolean isStrict) {
         executorMap = new HashMap<>();
         executorMap.put(BinaryExpression.class, new BinaryExpressionExecutor());
         executorMap.put(FieldDeclaration.class, new FieldDeclarationExecutor());
         executorMap.put(ConditionalStatement.class, new ConditionalStatementExecutor());
         executorMap.put(BlockStatement.class, new BlockStatementExecutor());
-        executorMap.put(DotPrimary.class, new DotPrimaryExecutor());
+        executorMap.put(DotPrimary.class, (isStrict ? new StrictDotPrimaryExecutor() : new DotPrimaryExecutor()));
     }
 
     public GlobalState exec(Statement statement, GlobalState state, String actorName) {

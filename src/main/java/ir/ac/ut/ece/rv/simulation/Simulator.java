@@ -24,10 +24,10 @@ public class Simulator {
 
     private ObjectMapper mapper = new ObjectMapper();
 
-    public Simulator(RebecaModel rebecaModel) {
+    public Simulator(RebecaModel rebecaModel, boolean isStrict) {
         this.rebecaModel = rebecaModel;
-        state = new GlobalState(rebecaModel);
-        nextStateGenerator = new NextStateGenerator();
+        state = new GlobalState(rebecaModel, isStrict);
+        nextStateGenerator = new NextStateGenerator(isStrict);
         state = nextStateGenerator.initialGlobalState(state);
         scheduler = new Scheduler();
     }
@@ -77,7 +77,8 @@ public class Simulator {
             Thread.State state = thread.getState();
             ThreadGroup group = Thread.currentThread().getThreadGroup();
 
-            if (state != Thread.State.TERMINATED && group.equals(thread.getThreadGroup()) && (!defaultThreads.contains(thread.getId()))) {
+            if (state != Thread.State.TERMINATED && group.equals(thread.getThreadGroup()) &&
+                    (!defaultThreads.contains(thread.getId()))) {
                 return false;
             }
         }
@@ -95,6 +96,8 @@ public class Simulator {
         long totalMessageCount = 0;
         long totalAskToTellElapsedTime = 0;
         long totalTellToNotifyElapsedTime = 0;
+        int totalSize = 0;
+        int totalHistorySize = 0;
         Map<String, MonitoringState> monitors = state.getMonitors();
         Map<MonitoringMessageType, Integer> totalSentMessage = new EnumMap<>(MonitoringMessageType.class);
         for (MonitoringMessageType monitoringMessageType : MonitoringMessageType.values()) {
@@ -131,11 +134,18 @@ public class Simulator {
             }
 
             long avgElapsedTime = 0;
-            if (monitorMessageCount != 0)
+            if (monitorMessageCount != 0) {
                 avgElapsedTime = monitorElapsedTime / monitorMessageCount;
+            }
             System.out.println("Average monitor elapsed time: " + avgElapsedTime + " ms");
-            System.out.println("Size: " + monitor.getLatestSize() + " Bytes");
-            System.out.println("History size: " + monitor.getHistory().size());
+
+            int monitorSize = monitor.getLatestSize();
+            int monitorHistorySize = monitor.getHistory().size();
+            totalSize += monitorSize;
+            totalHistorySize += monitorHistorySize;
+
+            System.out.println("Size: " + monitorSize + " Bytes");
+            System.out.println("History size: " + monitorHistorySize);
 
             long monitorAskToTellElapsedTime = 0;
             for (Interval interval : monitor.getAskToTellIntervals().values()) {
@@ -168,10 +178,12 @@ public class Simulator {
         }
 
         System.out.println("--------------");
-        if (totalMessageCount != 0)
-            System.out.println("Total average elapsed time from all monitors: " + totalElapsedTime / totalMessageCount + " ms");
-        else
+        if (totalMessageCount != 0) {
+            System.out.println(
+                    "Total average elapsed time from all monitors: " + totalElapsedTime / totalMessageCount + " ms");
+        } else {
             System.out.println("This actor has no messages");
+        }
 
         System.out.println(String.format("Total ASK to TELL elapsed time from all monitors: %d ms",
                 totalAskToTellElapsedTime));
@@ -180,6 +192,8 @@ public class Simulator {
                 totalTellToNotifyElapsedTime));
         System.out.println("Total waiting time of all monitors: " + totalWaitingTime + " ms");
         System.out.println("Total blocking time of all monitors: " + totalBlockingTime + " ms");
+        System.out.println("Total size of all monitors: " + totalSize + " Bytes");
+        System.out.println("Total history size of all monitors " + totalHistorySize);
     }
 
     private int sizeof(MonitoringState monitoringState) {

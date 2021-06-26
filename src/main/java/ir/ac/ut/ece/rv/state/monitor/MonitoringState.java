@@ -12,25 +12,23 @@ import org.rebecalang.compiler.modelcompiler.corerebeca.objectmodel.ReactiveClas
 import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 import static ir.ac.ut.ece.rv.state.monitor.MonitoringMsgsrvDeclaration.*;
 
 public class MonitoringState extends LocalState {
-    private ReentrantLock sharedResourcesLock;
     private BlockingQueue<TypedMessageCall> sharedMessages;
     private BlockingQueue<BlockedMessage> blockedMessages;
     private BlockingQueue<Message> waitedMessages;
     private BlockingQueue<Message> errorMessages;
-    private List<History> history;
+    protected List<History> history;
     private List<MMItem> mmList;
     private List<MMItem> notifyList;
-    private List<History> tempHistory;
+    protected List<History> tempHistory;
     private List<History> vioHistory;
-    private TransitionTable transitionTable;
+    protected TransitionTable transitionTable;
     private ReactiveClassDeclaration associatedActor;
-    private Map<TransitionClock, List<Transition>> reqTrans;
+    protected Map<TransitionClock, List<Transition>> reqTrans;
     private Map<TransitionClock, List<History>> rcvHistory;
     private Map<TransitionClock, Interval> intervals;
     private Map<TransitionClock, Interval> askToTellIntervals;
@@ -40,7 +38,6 @@ public class MonitoringState extends LocalState {
 
     public MonitoringState(ReactiveClassDeclaration associatedActor, String instanceName) {
         super(new MonitoringClassDeclaration(instanceName), new MainRebecDefinition());
-        sharedResourcesLock = new ReentrantLock();
         sharedMessages = new ArrayBlockingQueue<>(1000);
         blockedMessages = new ArrayBlockingQueue<>(1000);
         waitedMessages = new ArrayBlockingQueue<>(1000);
@@ -113,7 +110,15 @@ public class MonitoringState extends LocalState {
         );
     }
 
-    private BlockedMessage getBlockedMessage(String caller, String callee, String methodName) {
+    private void sendMonitoringMessage(String callee, MonitoringMessageMeta meta, Transition originTransition) {
+        monitoringStateLogger.logSendMonitoringMessage(callee, originTransition, meta.getType());
+        VectorClock vc = GlobalState.getInstance().getStates().get("instance" + associatedActor.getName())
+                .getCopyOfVectorClock();
+        GlobalState.getInstance()
+                .addMonitoringMessageCall(instanceName, currentExecutingMethod, callee, vc, meta);
+    }
+
+    protected BlockedMessage getBlockedMessage(String caller, String callee, String methodName) {
         Iterator<BlockedMessage> iterator = blockedMessages.iterator();
         BlockedMessage returnMessage = null;
         while (iterator.hasNext()) {
@@ -174,6 +179,17 @@ public class MonitoringState extends LocalState {
         return false;
     }
 
+    public boolean isLabeledMessage(String caller, String callee, String methodName) {
+        List<TransitionItem> transitionItems = transitionTable.findItemByMethodName(methodName);
+        for (TransitionItem transition :
+                transitionItems) {
+            if (transition.getTransition().getCaller().equals(caller) &&
+                    transition.getTransition().getCallee().equals(callee))
+                return true;
+        }
+        return false;
+    }
+
     @Override
     public boolean isExecCandidate() {
         return super.isExecCandidate() || !sharedMessages.isEmpty();
@@ -195,7 +211,11 @@ public class MonitoringState extends LocalState {
     @Override
     protected void loadMethodBody(MessageCall messageCall) {
         currentExecutingMethod = messageCall.getMethodName();
-        vectorClock.update(messageCall.getVectorClock());
+        VectorClock messageVectorClock = messageCall.getVectorClock();
+        vectorClock.update(messageVectorClock);
+        GlobalState.getInstance().getStates().get("instance" + associatedActor.getName())
+                .updateVectorClock(messageVectorClock);
+
         MsgsrvDeclaration methodDeclaration = findMethod(messageCall.getMethodName());
         if (!(methodDeclaration instanceof MonitoringMsgsrvDeclaration))
             throw new RuntimeException("Illegal method '" + messageCall.getMethodName() + "' found in monitor");
@@ -209,7 +229,7 @@ public class MonitoringState extends LocalState {
                     TypedMessageCall typedMessageCall = (TypedMessageCall) messageCall;
                     RegularMessageType regularMessageType = typedMessageCall.getType();
                     monitoringStateLogger.logReceiveRegularMessage(caller, callee, methodName, regularMessageType);
-                    receiveRegularMessage(caller, callee, methodName, messageCall.getVectorClock(), regularMessageType);
+                    receiveRegularMessage(caller, callee, methodName, messageVectorClock, regularMessageType);
                 } else {
                     System.out.println("Error: Received regular message isn't an instance of TypedMessageCall!");
                 }
@@ -254,21 +274,12 @@ public class MonitoringState extends LocalState {
         waitedMessages.removeIf(message -> message.equal(calledMethod, callee, caller));
     }
 
-    private void receiveMonitoringMessageTell(MonitoringMessageMeta meta) {
+    protected void receiveMonitoringMessageTell(MonitoringMessageMeta meta) {
         Transition originTransition = meta.getOriginTransition();
         Transition targetTransition = meta.getTargetTransition();
-
-        if (meta.getTargetNotify()) {
-            notifyList.add(new MMItem(originTransition, targetTransition, meta.getVectorClock(),
-                    originTransition.getCaller()));
-        }
-
         TransitionClock key = new TransitionClock(originTransition, meta.getVectorClock());
-        askToTellIntervals.get(key).setEnd(new Date());
 
-        List<History> rcvHistList = rcvHistory.getOrDefault(key, new ArrayList<>());
-        rcvHistList.addAll(meta.getHistory());
-        rcvHistory.put(key, rcvHistList);
+        handleNewReceivedMonitoringMessageTell(meta);
 
         List<Transition> reqTransList = reqTrans.getOrDefault(key, new ArrayList<>());
         reqTransList.remove(targetTransition);
@@ -297,10 +308,7 @@ public class MonitoringState extends LocalState {
                                 mmItemTargetTransition,
                                 null
                         );
-                        monitoringStateLogger.logSendMonitoringMessage(mmItemTargetTransition.getCaller(),
-                                originTransition, MonitoringMessageType.NOTIFY);
-                        GlobalState.getInstance().addMonitoringMessageCall(instanceName, currentExecutingMethod,
-                                mmItemTargetTransition.getCaller(), newMeta);
+                        sendMonitoringMessage(mmItemTargetTransition.getCaller(), newMeta, originTransition);
                         mmItemIterator.remove();
                     }
                 }
@@ -343,6 +351,23 @@ public class MonitoringState extends LocalState {
         }
     }
 
+    protected void handleNewReceivedMonitoringMessageTell(MonitoringMessageMeta meta) {
+        Transition originTransition = meta.getOriginTransition();
+        Transition targetTransition = meta.getTargetTransition();
+
+        if (meta.getTargetNotify()) {
+            notifyList.add(new MMItem(originTransition, targetTransition, meta.getVectorClock(),
+                    originTransition.getCaller()));
+        }
+
+        TransitionClock key = new TransitionClock(originTransition, meta.getVectorClock());
+        askToTellIntervals.get(key).setEnd(new Date());
+
+        List<History> rcvHistList = rcvHistory.getOrDefault(key, new ArrayList<>());
+        rcvHistList.addAll(meta.getHistory());
+        rcvHistory.put(key, rcvHistList);
+    }
+
     private List<TransitionClock> getEmptyReqTransitions(String methodName) {
         List<TransitionClock> result = new ArrayList<>();
         for (Map.Entry<TransitionClock, List<Transition>> entry : reqTrans.entrySet()) {
@@ -356,7 +381,7 @@ public class MonitoringState extends LocalState {
         return result;
     }
 
-    private boolean evaluateFormulation(Transition originTransition, VectorClock messageVC) {
+    protected boolean evaluateFormulation(Transition originTransition, VectorClock messageVC) {
         TransitionClock key = new TransitionClock(originTransition, messageVC);
         List<History> rcvHistList = rcvHistory.getOrDefault(key, new ArrayList<>());
 
@@ -383,7 +408,8 @@ public class MonitoringState extends LocalState {
             Iterator<MMItem> mmListIterator = mmList.iterator();
             while (mmListIterator.hasNext()) {
                 MMItem mmListMessage = mmListIterator.next();
-                if (mmListMessage.getOrigin().equals(metaOriginTransition) && mmListMessage.getSender().equals(metaOriginTransition.getCaller())) {
+                if (mmListMessage.getOrigin().equals(metaOriginTransition) &&
+                        mmListMessage.getSender().equals(metaOriginTransition.getCaller())) {
                     mmListIterator.remove();
                     MonitoringMessageMeta newMessageMeta = new MonitoringMessageMeta(
                             MonitoringMessageType.TELL,
@@ -392,10 +418,7 @@ public class MonitoringState extends LocalState {
                             mmListMessage.getTarget(),
                             getNotUnknownRecs(mmListMessage.getTarget(), meta.getVectorClock(), history)
                     );
-                    monitoringStateLogger.logSendMonitoringMessage(mmListMessage.getSender(),
-                            mmListMessage.getOrigin(), MonitoringMessageType.TELL);
-                    GlobalState.getInstance().addMonitoringMessageCall(instanceName, currentExecutingMethod,
-                            mmListMessage.getSender(), newMessageMeta);
+                    sendMonitoringMessage(mmListMessage.getSender(), newMessageMeta, mmListMessage.getOrigin());
                 }
             }
         } else {
@@ -420,7 +443,8 @@ public class MonitoringState extends LocalState {
                         Iterator<Transition> nextIterator = presAndVios.iterator();
                         while (nextIterator.hasNext()) {
                             Transition innerTransition = nextIterator.next();
-                            if (innerTransition != transition && innerTransition.getCaller().equals(transition.getCaller())) {
+                            if (innerTransition != transition &&
+                                    innerTransition.getCaller().equals(transition.getCaller())) {
                                 route.add(new Pair<>(calledMethod, innerTransition.getCalledMethod()));
                                 monitoringMsgTargetTransitions.add(innerTransition);
                                 nextIterator.remove();
@@ -437,18 +461,15 @@ public class MonitoringState extends LocalState {
                                 meta.getInitiator(),
                                 route
                         );
-                        monitoringStateLogger.logSendMonitoringMessage(transition.getCaller(), metaOriginTransition,
-                                MonitoringMessageType.DEADLOCK);
-                        GlobalState.getInstance().addMonitoringMessageCall(instanceName, currentExecutingMethod,
-                                transition.getCaller(), messageMeta);
+                        sendMonitoringMessage(transition.getCaller(), messageMeta, metaOriginTransition);
                     }
-                }   // else ignore message;
+                }
             }
         }
 
     }
 
-    private void receiveMonitoringMessageAsk(MonitoringMessageMeta meta) {
+    protected void receiveMonitoringMessageAsk(MonitoringMessageMeta meta) {
         Set<Transition> targetTransitions = meta.getTargetTransitions();
 
         for (Transition targetTransition : targetTransitions) {
@@ -474,7 +495,7 @@ public class MonitoringState extends LocalState {
         }
     }
 
-    private void handleMonitoringBlockedTargetBlockedAsk(MonitoringMessageMeta meta, Transition targetTransition) {
+    protected void handleMonitoringBlockedTargetBlockedAsk(MonitoringMessageMeta meta, Transition targetTransition) {
         String calledMethod = targetTransition.getCalledMethod();
 
         List<TransitionItem> DdindTransitions = transitionTable.findItemByMethodName(calledMethod)
@@ -516,21 +537,19 @@ public class MonitoringState extends LocalState {
                         instanceName,
                         route
                 );
-                monitoringStateLogger.logSendMonitoringMessage(transition.getCaller(), meta.getOriginTransition(),
-                        MonitoringMessageType.DEADLOCK);
-                GlobalState.getInstance().addMonitoringMessageCall(instanceName, currentExecutingMethod,
-                        transition.getCaller(), messageMeta);
+                sendMonitoringMessage(transition.getCaller(), messageMeta, meta.getOriginTransition());
             }
         }
-        mmList.add(new MMItem(meta.getOriginTransition(), meta.getTargetTransition(), meta.getVectorClock(),
+        mmList.add(new MMItem(meta.getOriginTransition(), targetTransition, meta.getVectorClock(),
                 meta.getOriginTransition().getCaller()));
     }
 
-    private void handleMonitoringBlockedTargetNotBlockedAsk(MonitoringMessageMeta meta, Transition targetTransition) {
+    protected void handleMonitoringBlockedTargetNotBlockedAsk(MonitoringMessageMeta meta, Transition targetTransition) {
         Transition originTransition = meta.getOriginTransition();
         List<History> recs = getRecs(targetTransition, meta.getVectorClock(), history);
 
-        if (hasUnknownVerdict(targetTransition, meta.getVectorClock(), this.history) || hasUnhandledMsg(targetTransition, meta.getVectorClock())) {
+        if (hasUnknownVerdict(targetTransition, meta.getVectorClock(), this.history) ||
+                hasUnhandledMsg(targetTransition, meta.getVectorClock())) {
             mmList.add(new MMItem(originTransition, targetTransition, meta.getVectorClock(),
                     originTransition.getCaller()));
         } else {
@@ -550,10 +569,7 @@ public class MonitoringState extends LocalState {
                     false,
                     targetNotify
             );
-            monitoringStateLogger.logSendMonitoringMessage(originTransition.getCaller(), originTransition,
-                    MonitoringMessageType.TELL);
-            GlobalState.getInstance().addMonitoringMessageCall(instanceName, currentExecutingMethod,
-                    originTransition.getCaller(), newMeta);
+            sendMonitoringMessage(originTransition.getCaller(), newMeta, originTransition);
             if (targetNotify) {
                 TransitionClock key = new TransitionClock(originTransition, messageVC);
                 tellToNotifyIntervals.put(key, new Interval(new Date()));
@@ -570,17 +586,15 @@ public class MonitoringState extends LocalState {
                 targetTransition,
                 notUnknownRecs
         );
-        monitoringStateLogger.logSendMonitoringMessage(meta.getOriginTransition().getCaller(),
-                meta.getOriginTransition(), MonitoringMessageType.TELL);
-        GlobalState.getInstance().addMonitoringMessageCall(instanceName, currentExecutingMethod,
-                meta.getOriginTransition().getCaller(), newMeta);
+        sendMonitoringMessage(meta.getOriginTransition().getCaller(), newMeta, meta.getOriginTransition());
     }
 
     private void handleMonitoringNotBlockedTargetNotBlockedAsk(MonitoringMessageMeta meta,
                                                                Transition targetTransition) {
         Transition originTransition = meta.getOriginTransition();
 
-        if (hasUnknownVerdict(targetTransition, meta.getVectorClock(), this.history) || hasUnhandledMsg(targetTransition, meta.getVectorClock())) {
+        if (hasUnknownVerdict(targetTransition, meta.getVectorClock(), this.history) ||
+                hasUnhandledMsg(targetTransition, meta.getVectorClock())) {
             mmList.add(new MMItem(originTransition, targetTransition, meta.getVectorClock(),
                     originTransition.getCaller()));
         } else {
@@ -592,14 +606,11 @@ public class MonitoringState extends LocalState {
                     targetTransition,
                     notUnknownRecs
             );
-            monitoringStateLogger.logSendMonitoringMessage(originTransition.getCaller(), originTransition,
-                    MonitoringMessageType.TELL);
-            GlobalState.getInstance().addMonitoringMessageCall(instanceName, currentExecutingMethod,
-                    originTransition.getCaller(), newMeta);
+            sendMonitoringMessage(originTransition.getCaller(), newMeta, originTransition);
         }
     }
 
-    private boolean evalHist(Transition t, VectorClock vc) {
+    protected boolean evalHist(Transition t, VectorClock vc) {
         boolean flag = false;
 
         if (tempHistory.stream().anyMatch(it -> it.getTransition().equals(t))) {
@@ -608,7 +619,8 @@ public class MonitoringState extends LocalState {
             for (History rec : recs) {
                 vc2 = VectorClock.of(vc2, rec.getVc2());
             }
-            if (tempHistory.stream().anyMatch(it -> it.getTransition().equals(t) && it.getVc().equals(vc) && it.getVerdict() == Verdict.FALSE)) {
+            if (tempHistory.stream().anyMatch(
+                    it -> it.getTransition().equals(t) && it.getVc().equals(vc) && it.getVerdict() == Verdict.FALSE)) {
                 updateHistory(t, vc, vc2, Verdict.FALSE);
             } else {
                 updateHistory(t, vc, vc2, Verdict.BOTH);
@@ -620,14 +632,15 @@ public class MonitoringState extends LocalState {
 
             tempHistory.removeAll(recs);
         } else {
-            history.removeIf(it -> it.getTransition().equals(t) && it.getVc().equals(vc) && it.getVc2() == null && it.getVerdict() == Verdict.UNKNOWN);
+            history.removeIf(it -> it.getTransition().equals(t) && it.getVc().equals(vc) && it.getVc2() == null &&
+                    it.getVerdict() == Verdict.UNKNOWN);
         }
         handleMonitorMessage(t);
 
         return flag;
     }
 
-    private void handleMonitorMessage(Transition t) {
+    protected void handleMonitorMessage(Transition t) {
         List<MMItem> handleList = mmList
                 .stream()
                 .filter(it -> it.getTarget().equals(t))
@@ -644,15 +657,12 @@ public class MonitoringState extends LocalState {
                     mmItem.getTarget(),
                     recs
             );
-            monitoringStateLogger.logSendMonitoringMessage(mmItem.getOrigin().getCaller(), mmItem.getOrigin(),
-                    MonitoringMessageType.TELL);
-            GlobalState.getInstance().addMonitoringMessageCall(instanceName, currentExecutingMethod,
-                    mmItem.getOrigin().getCaller(), meta);
+            sendMonitoringMessage(mmItem.getOrigin().getCaller(), meta, mmItem.getOrigin());
             mmList.remove(mmItem);
         }
     }
 
-    private void declare(Verdict verdict) {
+    protected void declare(Verdict verdict) {
         List<DeclareMessageMetaItem> items = new ArrayList<>();
         GlobalState
                 .getInstance()
@@ -666,7 +676,7 @@ public class MonitoringState extends LocalState {
         System.out.println("declare sent to central monitor");
     }
 
-    private Verdict getVerdict(Transition t) {
+    protected Verdict getVerdict(Transition t) {
         return tempHistory
                 .stream()
                 .filter(it -> it.getTransition().equals(t))
@@ -682,10 +692,11 @@ public class MonitoringState extends LocalState {
                 .anyMatch(it -> it.getTransition().equals(t) && it.isFinal());
     }
 
-    private void updateHistory(Transition t, VectorClock vc, VectorClock vc2, Verdict verdict) {
+    protected void updateHistory(Transition t, VectorClock vc, VectorClock vc2, Verdict verdict) {
         List<History> pc = history
                 .stream()
-                .filter(it -> it.getTransition().equals(t) && it.getVc().equals(vc) && it.getVerdict() == Verdict.UNKNOWN)
+                .filter(it -> it.getTransition().equals(t) && it.getVc().equals(vc) &&
+                        it.getVerdict() == Verdict.UNKNOWN)
                 .collect(Collectors.toList());
         for (History it : pc) {
             it.setVc2(vc2);
@@ -741,7 +752,7 @@ public class MonitoringState extends LocalState {
         return status;
     }
 
-    private List<History> getRecs(Transition transition, List<History> list) {
+    protected List<History> getRecs(Transition transition, List<History> list) {
         return list
                 .stream()
                 .filter(it -> it.getTransition().equals(transition))
@@ -751,14 +762,17 @@ public class MonitoringState extends LocalState {
     private List<History> getRecs(Transition transition, VectorClock vc, List<History> list) {
         return list
                 .stream()
-                .filter(it -> it.getTransition().equals(transition) && (it.getVc().isLessThan(vc) || it.getVc().isConcurrent(vc)))
+                .filter(it -> it.getTransition().equals(transition) &&
+                        (it.getVc().isLessThan(vc) || it.getVc().isConcurrent(vc)))
                 .collect(Collectors.toList());
     }
 
     private List<History> getNotUnknownRecs(Transition transition, VectorClock vc, List<History> list) {
         return list
                 .stream()
-                .filter(it -> it.getTransition().equals(transition) && (it.getVc().isLessThan(vc) || it.getVc().isConcurrent(vc)) && it.getVerdict() != Verdict.UNKNOWN)
+                .filter(it -> it.getTransition().equals(transition) &&
+                        (it.getVc().isLessThan(vc) || it.getVc().isConcurrent(vc)) &&
+                        it.getVerdict() != Verdict.UNKNOWN)
                 .collect(Collectors.toList());
     }
 
@@ -767,7 +781,8 @@ public class MonitoringState extends LocalState {
         try {
             return sharedMessages.stream().anyMatch(it -> {
                 String methodName = it.getPrimitiveArgument("methodName");
-                return methodName.equals(targetTransition.getCalledMethod()) && ((it.getVectorClock().isLessThan(vc) || it.getVectorClock().isConcurrent(vc)));
+                return methodName.equals(targetTransition.getCalledMethod()) &&
+                        ((it.getVectorClock().isLessThan(vc) || it.getVectorClock().isConcurrent(vc)));
             });
         } finally {
             sharedResourcesLock.unlock();
@@ -790,71 +805,87 @@ public class MonitoringState extends LocalState {
             receiveRegularMessageNotify(methodName, messageVC);
     }
 
-    private void receiveRegularMessageAsk(String caller, String callee, String methodName,
-                                          VectorClock messageVC) {
-        List<TransitionItem> items = transitionTable.findItemByMethodName(methodName);
+    protected void receiveRegularMessageAsk(String caller, String callee, String methodName,
+                                            VectorClock messageVC) {
+        List<TransitionItem> transitionItems = transitionTable.findItemByMethodName(methodName);
         boolean isLastMessage = isLastMessage(caller, callee, methodName);
 
-        items.forEach(item -> {
-            Transition origin = item.getTransition();
+        for (TransitionItem transitionItem : transitionItems) {
+            handleTransitionItemAsk(transitionItem, isLastMessage, messageVC);
+        }
+    }
+
+    protected void handleTransitionItemAsk(TransitionItem transitionItem, Boolean isLastMessage,
+                                           VectorClock messageVC) {
+        List<Transition> presAndVios = getPresAndVios(transitionItem);
+        Transition origin = transitionItem.getTransition();
+        handleReqTransAsk(origin, presAndVios, messageVC);
+        handlePreAndViosAsk(origin, presAndVios, isLastMessage, messageVC);
+    }
+
+    private void handleReqTransAsk(Transition origin, List<Transition> presAndVios, VectorClock messageVC) {
+        TransitionClock key = new TransitionClock(origin, messageVC);
+        List<Transition> reqTransitions = reqTrans.getOrDefault(key, new ArrayList<>());
+        reqTransitions.addAll(presAndVios);
+        reqTrans.put(key, reqTransitions);
+    }
+
+    private List<Transition> getPresAndVios(TransitionItem transitionItem) {
+        List<Transition> presAndVios = new ArrayList<>();
+        if (transitionItem.getPre() != null) {
+            presAndVios.add(transitionItem.getPre());
+        }
+        presAndVios.addAll(transitionItem.getVio());
+        return presAndVios;
+    }
+
+    private void handlePreAndViosAsk(Transition origin, List<Transition> presAndVios, Boolean isLastMessage,
+                                     VectorClock messageVC) {
+        if (presAndVios.size() > 0) {
             TransitionClock key = new TransitionClock(origin, messageVC);
-            List<Transition> reqTransitions = reqTrans.getOrDefault(key, new ArrayList<>());
-            List<Transition> transAll = new ArrayList<>();
-            if (item.getPre() != null) {
-                reqTransitions.add(item.getPre());
-                transAll.add(item.getPre());
-            }
-            reqTransitions.addAll(item.getVio());
-            transAll.addAll(item.getVio());
-            reqTrans.put(key, reqTransitions);
 
-            if (transAll.size() > 0) {
-                transAll.forEach(target -> {
-                    Set<Transition> transProcess = new HashSet<>();
-                    transProcess.add(target);
+            presAndVios.forEach(target -> {
+                Set<Transition> transProcess = new HashSet<>();
+                transProcess.add(target);
 
-                    Iterator<Transition> transitionIterator = transAll.iterator();
-                    while (transitionIterator.hasNext()) {
-                        Transition transition = transitionIterator.next();
-                        if (transition.getCaller().equals(target.getCaller()) && !transition.equals(target)) {
-                            transProcess.add(transition);
-                            transitionIterator.remove();
-                        }
+                Iterator<Transition> transitionIterator = presAndVios.iterator();
+                while (transitionIterator.hasNext()) {
+                    Transition transition = transitionIterator.next();
+                    if (transition.getCaller().equals(target.getCaller()) && !transition.equals(target)) {
+                        transProcess.add(transition);
+                        transitionIterator.remove();
                     }
-
-                    MonitoringMessageMeta meta = new MonitoringMessageMeta(
-                            MonitoringMessageType.ASK,
-                            messageVC,
-                            origin,
-                            transProcess,
-                            Collections.emptyList(),
-                            isLastMessage,
-                            false
-                    );
-
-                    monitoringStateLogger.logSendMonitoringMessage(target.getCaller(), origin,
-                            MonitoringMessageType.ASK);
-                    GlobalState.getInstance().addMonitoringMessageCall(instanceName, currentExecutingMethod,
-                            target.getCaller(), meta);
-                    intervals.put(key, new Interval(new Date()));
-                    askToTellIntervals.put(key, new Interval(new Date()));
-                });
-
-                if (!hasUnknownVerdict(origin, messageVC, history)) {
-                    history.add(new History(origin, messageVC, null, Verdict.UNKNOWN));
                 }
-            } else {
-                if (!isLastMessage) {
-                    history.add(new History(origin, messageVC, messageVC, Verdict.TRUE));
-                }
-                handleMonitorMessage(origin);
+
+                MonitoringMessageMeta meta = new MonitoringMessageMeta(
+                        MonitoringMessageType.ASK,
+                        messageVC,
+                        origin,
+                        transProcess,
+                        Collections.emptyList(),
+                        isLastMessage,
+                        false
+                );
+
+                sendMonitoringMessage(target.getCaller(), meta, origin);
+                intervals.put(key, new Interval(new Date()));
+                askToTellIntervals.put(key, new Interval(new Date()));
+            });
+
+            if (!hasUnknownVerdict(origin, messageVC, history)) {
+                history.add(new History(origin, messageVC, null, Verdict.UNKNOWN));
             }
-        });
+        } else {
+            if (!isLastMessage) {
+                history.add(new History(origin, messageVC, messageVC, Verdict.TRUE));
+            }
+            handleMonitorMessage(origin);
+        }
     }
 
     private void receiveRegularMessageNotify(String methodName, VectorClock messageVC) {
         Iterator<MMItem> mmItemIterator = notifyList.iterator();
-        while(mmItemIterator.hasNext()) {
+        while (mmItemIterator.hasNext()) {
             MMItem mmItem = mmItemIterator.next();
             if (mmItem.getOrigin().getCalledMethod().equals(methodName)) {
                 Transition origin = mmItem.getOrigin();
@@ -867,10 +898,7 @@ public class MonitoringState extends LocalState {
                         target,
                         null
                 );
-                monitoringStateLogger.logSendMonitoringMessage(target.getCaller(), origin,
-                        MonitoringMessageType.NOTIFY);
-                GlobalState.getInstance().addMonitoringMessageCall(instanceName, currentExecutingMethod,
-                        target.getCaller(), meta);
+                sendMonitoringMessage(target.getCaller(), meta, origin);
                 mmItemIterator.remove();
             }
         }

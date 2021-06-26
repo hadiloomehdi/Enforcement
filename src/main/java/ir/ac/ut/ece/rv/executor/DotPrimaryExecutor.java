@@ -12,6 +12,11 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class DotPrimaryExecutor extends StatementExecutor<DotPrimary> {
+
+    public boolean needBlocking(GlobalState globalState,String actorName,String calledMethod,String calledActor){
+        return globalState.isLastMessage(actorName, calledMethod, calledActor);
+    }
+
     @Override
     public GlobalState exec(DotPrimary statement, GlobalState globalState, String actorName) {
         TermPrimary leftTerm = (TermPrimary) statement.getLeft();
@@ -34,7 +39,7 @@ public class DotPrimaryExecutor extends StatementExecutor<DotPrimary> {
                 .collect(Collectors.toList());
         globalState.setActorBlockingState(actorName, true);
         Thread thread = new Thread(() -> {
-            if (globalState.isLastMessage(actorName, calledMethod, calledActor)) {
+            if (needBlocking(globalState, actorName, calledMethod, calledActor)) {
                 VectorClock vc = globalState.getStates().get(actorName).getCopyOfVectorClock();
                 globalState.addRegularMessageCall(actorName, executingMethodName, calledActor, calledMethod, vc, RegularMessageType.ASK);
                 globalState.addToBlockingQueue(actorName, calledMethod, calledActor);

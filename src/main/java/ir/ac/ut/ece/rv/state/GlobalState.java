@@ -2,13 +2,9 @@ package ir.ac.ut.ece.rv.state;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import ir.ac.ut.ece.rv.state.central.CentralClassDeclaration;
-import ir.ac.ut.ece.rv.state.central.DeclareMessageMeta;
 import ir.ac.ut.ece.rv.state.central.CentralState;
-import ir.ac.ut.ece.rv.state.monitor.BlockedMessageState;
-import ir.ac.ut.ece.rv.state.monitor.MonitoringMessageMeta;
-import ir.ac.ut.ece.rv.state.monitor.MonitoringState;
-import ir.ac.ut.ece.rv.state.monitor.RegularMessageType;
-
+import ir.ac.ut.ece.rv.state.central.DeclareMessageMeta;
+import ir.ac.ut.ece.rv.state.monitor.*;
 import org.rebecalang.compiler.modelcompiler.corerebeca.objectmodel.*;
 
 import java.util.Collections;
@@ -28,7 +24,7 @@ public class GlobalState {
     private Map<String, LocalState> states;
     private DelayManager delayManager;
 
-    public GlobalState(RebecaModel rebecaModel) {
+    public GlobalState(RebecaModel rebecaModel, boolean isStrict) {
         states = rebecaModel
                 .getRebecaCode()
                 .getMainDeclaration()
@@ -40,7 +36,7 @@ public class GlobalState {
                                 it -> new LocalState(findReactiveClassDeclaration(it.getType(), rebecaModel), it)
                         )
                 );
-        createMonitoringActors();
+        createMonitoringActors(isStrict);
         createCentralActor();
         Set<String> vectorClockKeys = states
                 .keySet()
@@ -66,14 +62,15 @@ public class GlobalState {
         GlobalState.instance = instance;
     }
 
-    public void createMonitoringActors() {
+    public void createMonitoringActors(boolean isStrict) {
         Map<String, MonitoringState> monitoringStates = states
                 .keySet()
                 .stream()
                 .collect(Collectors.toMap(
                         instanceName -> "#monitor_" + instanceName,
-                        instanceName -> new MonitoringState(
-                                states.get(instanceName).actor, "#monitor_" + instanceName
+                        instanceName -> (isStrict ?
+                                new StrictMonitoringState(states.get(instanceName).actor, "#monitor_" + instanceName) :
+                                new MonitoringState(states.get(instanceName).actor, "#monitor_" + instanceName)
                         )
                 ));
         states.putAll(monitoringStates);
@@ -143,7 +140,8 @@ public class GlobalState {
         return states.get(actorName).getBinding(calledInstance);
     }
 
-    public void addMessageCall(String caller, String callerMethod, String callee, String calleeMethod, List<Value> arguments) {
+    public void addMessageCall(String caller, String callerMethod, String callee, String calleeMethod,
+                               List<Value> arguments) {
         Runnable runnable = () -> {
             delayManager.sleep(caller, callerMethod, callee);
             states.get(callee).addMessageCall(calleeMethod, arguments, states.get(caller).getCopyOfVectorClock());
@@ -159,11 +157,12 @@ public class GlobalState {
                 .collect(Collectors.toList());
     }
 
-    public void setActorBlockingState(String actorName,boolean isBlocked){
+    public void setActorBlockingState(String actorName, boolean isBlocked) {
         getStates().get(actorName).setBlockingState(isBlocked);
     }
 
-    public void addRegularMessageCall(String caller, String callerMethod, String callee, String calleeMethod, VectorClock vc, RegularMessageType type) {
+    public void addRegularMessageCall(String caller, String callerMethod, String callee, String calleeMethod,
+                                      VectorClock vc, RegularMessageType type) {
         Runnable runnable = () -> {
             delayManager.sleep(caller, callerMethod, callee);
             List<Value> arguments = Stream
@@ -181,14 +180,15 @@ public class GlobalState {
         t.start();
     }
 
-    public void addMonitoringMessageCall(String caller, String callerMethod, String callee, MonitoringMessageMeta messageMeta) {
+    public void addMonitoringMessageCall(String caller, String callerMethod, String callee,
+                                         VectorClock vc, MonitoringMessageMeta messageMeta) {
         Runnable runnable = () -> {
             delayManager.sleep(caller, callerMethod, "#monitor_" + callee);
             List<Value> arguments = Collections.singletonList(messageMeta);
             getMonitoringState(callee).addMessageCall(
                     MONITORING_MESSAGE,
                     arguments,
-                    states.get(callee).getCopyOfVectorClock()
+                    vc
             );
         };
         Thread t = new Thread(runnable);
@@ -204,12 +204,16 @@ public class GlobalState {
         return (MonitoringState) states.get("#monitor_" + instanceName);
     }
 
-    public void logWaitingMessage(String caller, String calledMethod, String callee, VectorClock vc, long startTime, long stopTime) {
-        getMonitoringState(caller).getMonitoringStateLogger().logWaitingMessage(caller, calledMethod, callee, vc, startTime, stopTime);
+    public void logWaitingMessage(String caller, String calledMethod, String callee, VectorClock vc, long startTime,
+                                  long stopTime) {
+        getMonitoringState(caller).getMonitoringStateLogger()
+                .logWaitingMessage(caller, calledMethod, callee, vc, startTime, stopTime);
     }
 
-    public void logBlockingMessage(String caller, String calledMethod, String callee, VectorClock vc, long startTime, long stopTime) {
-        getMonitoringState(caller).getMonitoringStateLogger().logBlockingMessage(caller, calledMethod, callee, vc, startTime, stopTime);
+    public void logBlockingMessage(String caller, String calledMethod, String callee, VectorClock vc, long startTime,
+                                   long stopTime) {
+        getMonitoringState(caller).getMonitoringStateLogger()
+                .logBlockingMessage(caller, calledMethod, callee, vc, startTime, stopTime);
     }
 
     public void incrementVectorClock(String instanceName) {
@@ -233,6 +237,10 @@ public class GlobalState {
         return getMonitoringState(caller).isLastMessage(caller, callee, callerMethod);
     }
 
+    public boolean isLabeledMessage(String caller, String callerMethod, String callee) {
+        return getMonitoringState(caller).isLabeledMessage(caller, callee, callerMethod);
+    }
+
     public void getSharedQueuesLock(String caller) {
         getMonitoringState(caller).lockSharedResources();
     }
@@ -251,9 +259,11 @@ public class GlobalState {
 
     public boolean isInBlockingQueue(String caller, String methodName, String callee, BlockedMessageState state) {
         if (state.equals((BlockedMessageState.ERROR)))
-            return getMonitoringState(caller).isBlockedMessageOnStatus(caller, callee, methodName, BlockedMessageState.ERROR);
+            return getMonitoringState(caller)
+                    .isBlockedMessageOnStatus(caller, callee, methodName, BlockedMessageState.ERROR);
         else if (state.equals((BlockedMessageState.OK)))
-            return getMonitoringState(caller).isBlockedMessageOnStatus(caller, callee, methodName, BlockedMessageState.OK);
+            return getMonitoringState(caller)
+                    .isBlockedMessageOnStatus(caller, callee, methodName, BlockedMessageState.OK);
         else return false;
     }
 

@@ -13,7 +13,7 @@ public class Declaration {
     @Test
     public void declarationAndAssignment() {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/declaration.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+        Simulator simulator = new Simulator(rebecaModel,false);
         GlobalState state = simulator.getState();
 
         PrimitiveValue a = (PrimitiveValue) state.getVariableValue(ACTOR_NAME, "a");
@@ -28,7 +28,7 @@ public class Declaration {
     @Test(expected = RuntimeException.class)
     public void undeclaredVariable() {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/declaration.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+        Simulator simulator = new Simulator(rebecaModel,false);
         GlobalState state = simulator.getState();
         state.getVariableValue(ACTOR_NAME, "undeclaredVariable");
 

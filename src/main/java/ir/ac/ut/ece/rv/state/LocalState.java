@@ -6,10 +6,11 @@ import java.util.*;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.stream.Collectors;
 
 public class LocalState {
-
+    protected ReentrantLock sharedResourcesLock;
     protected ReactiveClassDeclaration actor;
     protected List<VariableState> variables;
     protected List<VariableState> localVariables;
@@ -22,6 +23,7 @@ public class LocalState {
     protected AtomicBoolean isBlocked;
 
     public LocalState(ReactiveClassDeclaration actor, MainRebecDefinition mainRebecDefinition) {
+        sharedResourcesLock = new ReentrantLock();
         this.actor = actor;
         variables = extractVariables();
         statements = extractConstructorStatements();
@@ -48,7 +50,7 @@ public class LocalState {
         return bindings;
     }
 
-    public void setBlockingState(boolean blocked){
+    public void setBlockingState(boolean blocked) {
         isBlocked.getAndSet(blocked);
     }
 
@@ -107,7 +109,7 @@ public class LocalState {
 
     protected void loadMethodBody(MessageCall messageCall) {
         currentExecutingMethod = messageCall.getMethodName();
-        vectorClock.update(messageCall.getVectorClock());
+        updateVectorClock(messageCall.getVectorClock());
         MsgsrvDeclaration methodDeclaration = findMethod(messageCall.getMethodName());
         if (methodDeclaration == null)
             return;
@@ -197,14 +199,27 @@ public class LocalState {
     }
 
     public VectorClock getCopyOfVectorClock() {
-        return new VectorClock(vectorClock);
+        try {
+            sharedResourcesLock.lock();
+            return new VectorClock(vectorClock);
+        } finally {
+            sharedResourcesLock.unlock();
+        }
     }
 
     public void incrementVectorClock() {
+        sharedResourcesLock.lock();
         vectorClock.increment();
+        sharedResourcesLock.unlock();
     }
 
     public String getExecutingMethodName() {
         return currentExecutingMethod;
+    }
+
+    public void updateVectorClock(VectorClock vectorClock) {
+        sharedResourcesLock.lock();
+        this.vectorClock.update(vectorClock);
+        sharedResourcesLock.unlock();
     }
 }

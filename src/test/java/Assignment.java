@@ -14,7 +14,7 @@ public class Assignment {
     @Test
     public void testAssignments() {
         RebecaModel rebecaModel = RebecaCompilerUtility.getRebecaModelOf(BASE_PATH + "/assignment.rebeca");
-        Simulator simulator = new Simulator(rebecaModel);
+        Simulator simulator = new Simulator(rebecaModel,false);
         GlobalState state = simulator.getState();
 
         PrimitiveValue i5 = (PrimitiveValue) state.getVariableValue(ACTOR_NAME, "i5");

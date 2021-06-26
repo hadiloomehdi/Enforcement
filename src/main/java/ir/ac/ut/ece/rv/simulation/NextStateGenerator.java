@@ -8,8 +8,11 @@ import java.util.HashSet;
 import java.util.Set;
 
 public class NextStateGenerator {
-    private ExecutorHandler executorHandler = new ExecutorHandler();
+    private ExecutorHandler executorHandler ;
 
+    NextStateGenerator(boolean isStrict){
+        this.executorHandler = new ExecutorHandler(isStrict);
+    }
     public GlobalState generate(GlobalState state, String instanceName) {
         Statement lastStatement = state.getLastStatement(instanceName);
 
