@@ -22,6 +22,7 @@ public class TransitionItem {
         this.isDdind = isDdinit;
         this.isPreind = isPreind;
         this.vioind = (vio.size() == 0) ? new HashMap<>() : new HashMap<>(IntStream.range(0, vio.size()).boxed().collect(Collectors.toMap(i -> vio.get(i).toString(), vioind::get)));
+//        this.isInit = isInit;
     }
 
     public boolean isForMethod(String methodName) {
