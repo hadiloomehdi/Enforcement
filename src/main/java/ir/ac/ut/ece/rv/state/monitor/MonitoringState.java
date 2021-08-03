@@ -498,13 +498,14 @@ public class MonitoringState extends LocalState {
     protected void handleMonitoringBlockedTargetBlockedAsk(MonitoringMessageMeta meta, Transition targetTransition) {
         String calledMethod = targetTransition.getCalledMethod();
 
-        List<TransitionItem> DdindTransitions = transitionTable.findItemByMethodName(calledMethod)
+        List<TransitionItem> finalInitTransitions = transitionTable.findItemByMethodName(calledMethod)
                 .stream()
-                .filter(TransitionItem::isDdind)
+                .filter(TransitionItem::isFinal)
+                .filter(TransitionItem::isInit)
                 .collect(Collectors.toList());
-        if (DdindTransitions.size() > 0) {
+        if (finalInitTransitions.size() > 0) {
             ArrayList<Transition> presAndVios = new ArrayList<>();
-            for (TransitionItem transitionItem : DdindTransitions) {
+            for (TransitionItem transitionItem : finalInitTransitions) {
                 if (transitionItem.isPreind()) {
                     presAndVios.add(transitionItem.getPre());
                 }

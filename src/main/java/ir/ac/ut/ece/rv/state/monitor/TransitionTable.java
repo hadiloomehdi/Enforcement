@@ -33,7 +33,8 @@ public class TransitionTable {
                         Arrays.stream(row[6].replaceAll("[\\[\\]]", "").split("\\)"))
                                 .map(Boolean::parseBoolean)
                                 .filter(Objects::nonNull)
-                                .collect(Collectors.toList())
+                                .collect(Collectors.toList()),
+                        Boolean.parseBoolean(row[7])
                 )
         ).collect(Collectors.toList());
     }

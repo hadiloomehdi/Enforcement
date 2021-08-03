@@ -13,8 +13,9 @@ public class TransitionItem {
     private boolean isDdind;
     private boolean isPreind;
     private HashMap<String, Boolean> vioind;
+    private boolean isInit;
 
-    public TransitionItem(Transition pre, Transition transition, List<Transition> vio, boolean isFinal, boolean isDdinit, boolean isPreind, List<Boolean> vioind) {
+    public TransitionItem(Transition pre, Transition transition, List<Transition> vio, boolean isFinal, boolean isDdinit, boolean isPreind, List<Boolean> vioind, boolean isInit) {
         this.pre = pre;
         this.transition = transition;
         this.vio = vio;
@@ -22,7 +23,7 @@ public class TransitionItem {
         this.isDdind = isDdinit;
         this.isPreind = isPreind;
         this.vioind = (vio.size() == 0) ? new HashMap<>() : new HashMap<>(IntStream.range(0, vio.size()).boxed().collect(Collectors.toMap(i -> vio.get(i).toString(), vioind::get)));
-//        this.isInit = isInit;
+        this.isInit = isInit;
     }
 
     public boolean isForMethod(String methodName) {
@@ -52,6 +53,10 @@ public class TransitionItem {
 
     public boolean isPreind() {
         return isPreind;
+    }
+
+    public boolean isInit() {
+        return isInit;
     }
 
     public List<Transition> getVoiIndTransitions(){
