@@ -96,6 +96,7 @@ public class Simulator {
         long totalMessageCount = 0;
         long totalAskToTellElapsedTime = 0;
         long totalTellToNotifyElapsedTime = 0;
+        long totalDeadlockToDeadlockElapsedTime = 0;
         int totalSize = 0;
         int totalHistorySize = 0;
         Map<String, MonitoringState> monitors = state.getMonitors();
@@ -161,12 +162,20 @@ public class Simulator {
             System.out.println(String.format("Total monitor TELL to NOTIFY elapsed time: %d ms",
                     monitorTellToNotifyElapsedTime));
 
+            long monitorDeadlockToDeadlockElapsedTime = 0;
+            for (Interval interval : monitor.getDeadlockToDeadlockIntervals().values()) {
+                monitorDeadlockToDeadlockElapsedTime += interval.getDuration();
+            }
+            System.out.println(String.format("Total monitor DEADLOCK to DEADLOCK elapsed time: %d ms",
+                    monitorDeadlockToDeadlockElapsedTime));
+
             totalBlockingTime += monitorBlockTime;
             totalWaitingTime += monitorWaitTime;
             totalElapsedTime += monitorElapsedTime;
             totalMessageCount += monitorMessageCount;
             totalAskToTellElapsedTime += monitorAskToTellElapsedTime;
             totalTellToNotifyElapsedTime += monitorTellToNotifyElapsedTime;
+            totalDeadlockToDeadlockElapsedTime += monitorDeadlockToDeadlockElapsedTime;
         }
         System.out.println("--------------");
 
@@ -190,6 +199,10 @@ public class Simulator {
 
         System.out.println(String.format("Total TELL to NOTIFY elapsed time from all monitors: %d ms",
                 totalTellToNotifyElapsedTime));
+
+        System.out.println(String.format("Total DEADLOCK to DEADLOCK elapsed time from all monitors: %d ms",
+                totalDeadlockToDeadlockElapsedTime));
+
         System.out.println("Total waiting time of all monitors: " + totalWaitingTime + " ms");
         System.out.println("Total blocking time of all monitors: " + totalBlockingTime + " ms");
         System.out.println("Total size of all monitors: " + totalSize + " Bytes");

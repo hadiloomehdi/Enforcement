@@ -33,6 +33,7 @@ public class MonitoringState extends LocalState {
     private Map<TransitionClock, Interval> intervals;
     private Map<TransitionClock, Interval> askToTellIntervals;
     private Map<TransitionClock, Interval> tellToNotifyIntervals;
+    private Map<TransitionClock, Interval> deadlockToDeadlockIntervals;
     private int latestSize;
     private MonitoringStateLogger monitoringStateLogger;
 
@@ -54,6 +55,7 @@ public class MonitoringState extends LocalState {
         intervals = new HashMap<>();
         askToTellIntervals = new HashMap<>();
         tellToNotifyIntervals = new HashMap<>();
+        deadlockToDeadlockIntervals = new HashMap<>();
         latestSize = 0;
         monitoringStateLogger = new MonitoringStateLogger(instanceName);
     }
@@ -414,6 +416,13 @@ public class MonitoringState extends LocalState {
 
     private void receiveMonitoringMessageDeadLock(MonitoringMessageMeta meta) {
         Transition metaOriginTransition = meta.getOriginTransition();
+        VectorClock messageVC = meta.getVectorClock();
+        TransitionClock key = new TransitionClock(metaOriginTransition, messageVC);
+
+        if (tellToNotifyIntervals.containsKey(key)) {
+            tellToNotifyIntervals.get(key).setEnd(new Date());
+        }
+
         if (meta.getInitiator().equals(instanceName)) {
             Iterator<MMItem> mmListIterator = mmList.iterator();
             while (mmListIterator.hasNext()) {
@@ -472,6 +481,9 @@ public class MonitoringState extends LocalState {
                                 route
                         );
                         sendMonitoringMessage(transition.getCaller(), messageMeta, metaOriginTransition);
+
+                        intervals.put(key, new Interval(new Date()));
+                        deadlockToDeadlockIntervals.put(key, new Interval(new Date()));
                     }
                 }
             }
@@ -549,6 +561,12 @@ public class MonitoringState extends LocalState {
                         route
                 );
                 sendMonitoringMessage(transition.getCaller(), messageMeta, meta.getOriginTransition());
+
+                Transition metaOriginTransition = meta.getOriginTransition();
+                VectorClock messageVC = meta.getVectorClock();
+                TransitionClock key = new TransitionClock(metaOriginTransition, messageVC);
+                intervals.put(key, new Interval(new Date()));
+                deadlockToDeadlockIntervals.put(key, new Interval(new Date()));
             }
         }
         mmList.add(new MMItem(meta.getOriginTransition(), targetTransition, meta.getVectorClock(),
@@ -925,6 +943,10 @@ public class MonitoringState extends LocalState {
 
     public Map<TransitionClock, Interval> getTellToNotifyIntervals() {
         return tellToNotifyIntervals;
+    }
+
+    public Map<TransitionClock, Interval> getDeadlockToDeadlockIntervals() {
+        return deadlockToDeadlockIntervals;
     }
 
     public int getTotalMonitoringSent(MonitoringMessageType monitoringMessageType) {
