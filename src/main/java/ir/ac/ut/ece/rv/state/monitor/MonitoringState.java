@@ -169,11 +169,21 @@ public class MonitoringState extends LocalState {
 
     public boolean isLastMessage(String caller, String callee, String methodName) {
         List<TransitionItem> transitionItems = transitionTable.findItemByMethodName(methodName);
-        for (TransitionItem transition :
-                transitionItems) {
+        for (TransitionItem transition : transitionItems) {
             if (transition.getTransition().getCaller().equals(caller) &&
                     transition.getTransition().getCallee().equals(callee) &&
                     transition.isFinal())
+                return true;
+        }
+        return false;
+    }
+
+    public boolean isTransitionFinal(Transition transition){
+        String methodName = transition.getCalledMethod();
+        List<TransitionItem> transitionItems = transitionTable.findItemByMethodName(methodName);
+        for (TransitionItem trans : transitionItems) {
+            if (trans.getTransition().equals(transition) &&
+                    trans.isFinal())
                 return true;
         }
         return false;
@@ -274,6 +284,7 @@ public class MonitoringState extends LocalState {
         waitedMessages.removeIf(message -> message.equal(calledMethod, callee, caller));
     }
 
+
     protected void receiveMonitoringMessageTell(MonitoringMessageMeta meta) {
         Transition originTransition = meta.getOriginTransition();
         Transition targetTransition = meta.getTargetTransition();
@@ -288,8 +299,7 @@ public class MonitoringState extends LocalState {
         String originTransitionCaller = originTransition.getCaller();
         String originTransitionCallee = originTransition.getCallee();
         String originTransitionMethodName = originTransition.getCalledMethod();
-        boolean isOriginTransitionFinal = isLastMessage(originTransitionCaller, originTransitionCallee,
-                originTransitionMethodName);
+        boolean isOriginTransitionFinal = isTransitionFinal(originTransition);
         boolean isOriginTransitionBlockedOnUnknown = isBlockedMessageOnStatus(originTransitionCaller,
                 originTransitionCallee, originTransitionMethodName, BlockedMessageState.UNKNOWN);
         boolean isFormed = false;
