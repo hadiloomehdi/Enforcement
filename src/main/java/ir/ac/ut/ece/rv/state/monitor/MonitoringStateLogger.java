@@ -33,13 +33,13 @@ public class MonitoringStateLogger {
     public void logBlockingMessage(String actorName, String calledMethod, String calledActor, VectorClock vc, long startTime, long stopTime) {
         totalBlockTime += (int) (stopTime - startTime);
         String log = String.format("%s is waiting on message (%s, %s, %s). \tvc: %s", instanceName, actorName, calledMethod, calledActor, vc);
-        System.out.println(log);
+       // System.out.println(log);
     }
 
     public void logWaitingMessage(String actorName, String calledMethod, String calledActor, VectorClock vc, long startTime, long stopTime) {
         totalWaitTime += (int) (stopTime - startTime);
         String log = String.format("%s is blocked on message (%s, %s, %s). \tvc: %s", instanceName, actorName, calledMethod, calledActor, vc);
-        System.out.println(log);
+        //System.out.println(log);
     }
 
     public Integer getTotalBlockTime() {
@@ -55,14 +55,14 @@ public class MonitoringStateLogger {
         totalMonitoringSent.put(monitoringMessageType, totalMonitoringSent.get(monitoringMessageType) + 1);
         String log = String.format("A monitoring message of type %s is sending from %s to %s. Origin Transition: %s",
                 monitoringMessageType.toString(), instanceName, receiver, getTransitionLog(originTransition));
-        System.out.println(log);
+        //System.out.println(log);
     }
 
     public void logReceiveRegularMessage(String caller, String callee, String methodName,
                                          RegularMessageType regularMessageType) {
         String log = String.format("A regular message of type %s is received to %s. Caller: %s, Callee: %s, " +
                 "methodName: %s", regularMessageType.toString(), instanceName, caller, callee, methodName);
-        System.out.println(log);
+//        System.out.println(log);
     }
 
     public void logReceiveMonitoringMessage(MonitoringMessageMeta meta) {
@@ -70,7 +70,7 @@ public class MonitoringStateLogger {
         totalMonitoringReceived.put(monitoringMessageType, totalMonitoringReceived.get(monitoringMessageType) + 1);
         String log = String.format("A monitoring message of type %s is received to %s. Origin Transition: %s",
                 monitoringMessageType.toString(), instanceName, getTransitionLog(meta.getOriginTransition()));
-        System.out.println(log);
+  //      System.out.println(log);
     }
 
     private String getTransitionLog(Transition transition) {

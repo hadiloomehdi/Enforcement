@@ -29,6 +29,10 @@ public class Interval {
 
     @JsonIgnore
     public Long getDuration() {
-        return end.getTime() - start.getTime();
+        if (end!=null)
+      return end.getTime() - start.getTime();
+        else
+        return start.getTime() - start.getTime();
+
     }
 }

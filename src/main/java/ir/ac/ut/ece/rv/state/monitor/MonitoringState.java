@@ -405,30 +405,42 @@ public class MonitoringState extends LocalState {
         });
         List<History> recs = rcvHistory.get(key);
         rcvHistory.put(key, new ArrayList<>());
-        recs.forEach(rec -> evalVc(rec, originTransition, messageVC));
+        if (recs!=null){
+            if (!recs.isEmpty()){
+                recs.forEach(rec -> evalVc(rec, originTransition, messageVC));}}
         boolean isFormed = evalHist(originTransition, messageVC);
-        intervals.get(key).setEnd(new Date());
+        if (recs!=null){
+            intervals.get(key).setEnd(new Date());}
+
 
         return isFormed;
     }
 
+
     private void receiveMonitoringMessageDeadLock(MonitoringMessageMeta meta) {
         Transition metaOriginTransition = meta.getOriginTransition();
         if (meta.getInitiator().equals(instanceName)) {
+            System.out.println("Deadlock is detected");
             Iterator<MMItem> mmListIterator = mmList.iterator();
             while (mmListIterator.hasNext()) {
                 MMItem mmListMessage = mmListIterator.next();
-                if (mmListMessage.getOrigin().equals(metaOriginTransition) &&
+                if (mmListMessage.getOrigin().getMethodname().equals(metaOriginTransition.getMethodname()) &&
                         mmListMessage.getSender().equals(metaOriginTransition.getCaller())) {
                     mmListIterator.remove();
                     MonitoringMessageMeta newMessageMeta = new MonitoringMessageMeta(
                             MonitoringMessageType.TELL,
-                            null,
+                            mmListMessage.getVc(),
                             mmListMessage.getOrigin(),
                             mmListMessage.getTarget(),
-                            getNotUnknownRecs(mmListMessage.getTarget(), meta.getVectorClock(), history)
+                            getNotUnknownRecs(mmListMessage.getTarget(), mmListMessage.getVc(), history),
+                            true,
+                            true
+
                     );
                     sendMonitoringMessage(mmListMessage.getSender(), newMessageMeta, mmListMessage.getOrigin());
+                    TransitionClock key = new TransitionClock(metaOriginTransition, mmListMessage.getVc());
+                    tellToNotifyIntervals.put(key, new Interval(new Date()));
+
                 }
             }
         } else {
@@ -587,6 +599,7 @@ public class MonitoringState extends LocalState {
             }
         }
     }
+
 
     private void handleMonitoringNotBlockedTargetBlockedAsk(MonitoringMessageMeta meta, Transition targetTransition) {
         List<History> notUnknownRecs = getNotUnknownRecs(targetTransition, meta.getVectorClock(), history);

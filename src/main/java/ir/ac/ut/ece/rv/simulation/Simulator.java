@@ -57,17 +57,17 @@ public class Simulator {
             state = nextStateGenerator.generate(state, selectedActor);
 
             LocalState selectedActorState = state.getStates().get(selectedActor);
-            System.out.println("instance: " + selectedActor);
-            System.out.println("method:   " + state.getExecutingMethodName(selectedActor));
-            System.out.println("vc:       " + selectedActorState.getCopyOfVectorClock().toString());
+            //System.out.println("instance: " + selectedActor);
+            //System.out.println("method:   " + state.getExecutingMethodName(selectedActor));
+            //System.out.println("vc:       " + selectedActorState.getCopyOfVectorClock().toString());
             if (selectedActorState instanceof MonitoringState) {
                 MonitoringState monitoringState = (MonitoringState) selectedActorState;
                 int size = sizeof(monitoringState);
                 monitoringState.setLatestSize(size);
-                System.out.println("size:     " + size + " Bytes");
+             //   System.out.println("size:     " + size + " Bytes");
             }
 //            System.out.println(mapper.writerWithDefaultPrettyPrinter().writeValueAsString(state));
-            System.out.println("--------------");
+            //System.out.println("--------------");
         }
     }
 

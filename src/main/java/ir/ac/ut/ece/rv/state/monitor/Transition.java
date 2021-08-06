@@ -63,5 +63,8 @@ public class Transition {
     public String getCalledMethod() {
         return calledMethod;
     }
+    public String getMethodname() {
+        return caller+callee+calledMethod;
+    }
 }
 
