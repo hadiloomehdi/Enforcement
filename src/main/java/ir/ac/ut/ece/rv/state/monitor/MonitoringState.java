@@ -447,8 +447,8 @@ public class MonitoringState extends LocalState {
 
                     );
                     sendMonitoringMessage(mmListMessage.getSender(), newMessageMeta, mmListMessage.getOrigin());
-                    TransitionClock key = new TransitionClock(metaOriginTransition, mmListMessage.getVc());
-                    tellToNotifyIntervals.put(key, new Interval(new Date()));
+                    TransitionClock tellNotifyKey = new TransitionClock(metaOriginTransition, mmListMessage.getVc());
+                    tellToNotifyIntervals.put(tellNotifyKey, new Interval(new Date()));
 
                 }
             }
@@ -574,9 +574,8 @@ public class MonitoringState extends LocalState {
                 );
                 sendMonitoringMessage(transition.getCaller(), messageMeta, meta.getOriginTransition());
 
-                Transition metaOriginTransition = meta.getOriginTransition();
                 VectorClock messageVC = meta.getVectorClock();
-                TransitionClock key = new TransitionClock(metaOriginTransition, messageVC);
+                TransitionClock key = new TransitionClock(targetTransition, messageVC);
                 intervals.put(key, new Interval(new Date()));
                 deadlockToDeadlockIntervals.put(key, new Interval(new Date()));
             }
