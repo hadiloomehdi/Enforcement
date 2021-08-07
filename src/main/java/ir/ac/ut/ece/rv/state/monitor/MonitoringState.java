@@ -419,8 +419,8 @@ public class MonitoringState extends LocalState {
         VectorClock messageVC = meta.getVectorClock();
         TransitionClock key = new TransitionClock(metaOriginTransition, messageVC);
 
-        if (tellToNotifyIntervals.containsKey(key)) {
-            tellToNotifyIntervals.get(key).setEnd(new Date());
+        if (deadlockToDeadlockIntervals.containsKey(key)) {
+            deadlockToDeadlockIntervals.get(key).setEnd(new Date());
         }
 
         if (meta.getInitiator().equals(instanceName)) {
@@ -471,7 +471,7 @@ public class MonitoringState extends LocalState {
                         }
                         MonitoringMessageMeta messageMeta = new MonitoringMessageMeta(
                                 MonitoringMessageType.DEADLOCK,
-                                null,
+                                meta.getVectorClock(),
                                 metaTargetTransition,
                                 monitoringMsgTargetTransitions,
                                 null,
@@ -551,7 +551,7 @@ public class MonitoringState extends LocalState {
                 }
                 MonitoringMessageMeta messageMeta = new MonitoringMessageMeta(
                         MonitoringMessageType.DEADLOCK,
-                        null,
+                        meta.getVectorClock(),
                         targetTransition,
                         monitoringMsgTargetTransitions,
                         null,
